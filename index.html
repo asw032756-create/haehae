@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>해성 & 해민 육아 대시보드</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root { --primary: #2196F3; --haeseong: #2196F3; --haemin: #FF9800; --bg: #f4f7f6; --text: #333; --danger: #ff5252; }
+        body { font-family: 'Apple SD Gothic Neo', 'Segoe UI', sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 0; padding-bottom: 80px; }
+        .container { max-width: 480px; margin: 0 auto; padding: 15px; box-sizing: border-box; overflow-x: hidden; } 
+        #globalBaby1, #globalBaby2 { display: none; }
+
+        .header-tabs { display: flex; background: white; position: sticky; top: 0; box-shadow: 0 2px 10px rgba(0,0,0,0.08); z-index: 100; border-bottom-left-radius: 15px; border-bottom-right-radius: 15px; }
+        .header-tabs label { flex: 1; text-align: center; padding: 18px; font-weight: bold; cursor: pointer; color: #aaa; border-bottom: 4px solid transparent; transition: 0.3s; }
+        #globalBaby1:checked ~ .header-tabs label[for="globalBaby1"] { color: var(--haeseong); border-bottom-color: var(--haeseong); }
+        #globalBaby2:checked ~ .header-tabs label[for="globalBaby2"] { color: var(--haemin); border-bottom-color: var(--haemin); }
+
+        .card { background: white; padding: 22px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); margin-top: 20px; box-sizing: border-box; }
+        h3 { margin-top: 0; color: #222; font-size: 17px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .form-row { display: flex; gap: 8px; margin-bottom: 12px; width: 100%; box-sizing: border-box; }
+        
+        select, input, button { flex: 1; min-width: 0; width: 100%; padding: 12px 8px; border: 1px solid #e0e0e0; border-radius: 10px; font-size: 14px; box-sizing: border-box; background-color: #fafafa; }
+        button.primary-btn { background-color: var(--primary); color: white; font-weight: bold; cursor: pointer; border: none; font-size: 16px; padding: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        
+        .voice-btn { position: fixed; bottom: 20px; right: 20px; width: 60px; height: 60px; background-color: var(--danger); border-radius: 50%; color: white; display: flex; align-items: center; justify-content: center; font-size: 24px; box-shadow: 0 4px 15px rgba(255,82,82,0.4); cursor: pointer; z-index: 999; border: none; }
+        .voice-btn.listening { transform: scale(1.1); background-color: #d32f2f; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+
+        @keyframes blink-twice { 0% { background: transparent; } 25% { background: #fff59d; } 50% { background: transparent; } 75% { background: #fff59d; } 100% { background: transparent; } }
+        .highlight-blink { animation: blink-twice 1.5s ease-in-out; }
+
+        #customModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center; }
+        .modal-content { background: white; padding: 25px; border-radius: 20px; width: 85%; max-width: 320px; text-align: center; }
+        .modal-btns { display: flex; gap: 10px; margin-top: 20px; }
+        .modal-btns button { padding: 12px; border-radius: 10px; border: none; font-weight: bold; cursor: pointer; flex: 1; }
+        .btn-cancel { background: #eee; color: #666; }
+        .btn-confirm { background: var(--danger); color: white; }
+
+        .summary-box { background: linear-gradient(135deg, #e8f5e9, #c8e6c9); border-radius: 12px; padding: 15px; margin-bottom: 20px; }
+        .summary-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        .summary-item { background: white; padding: 12px; border-radius: 10px; text-align: center; font-size: 13px; color: #555; }
+        .summary-item strong { display: block; font-size: 16px; color: #222; margin-top: 4px; }
+        
+        .type-title { font-size: 15px; font-weight: bold; color: #444; margin: 20px 0 8px 0; display: flex; align-items: center; gap: 6px; }
+        .type-title::before { content: ""; display: inline-block; width: 4px; height: 16px; background-color: var(--primary); border-radius: 2px; }
+        table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; table-layout: fixed; } 
+        th, td { border-bottom: 1px solid #eee; padding: 12px 4px; vertical-align: middle; word-break: break-all; }
+        .delete-btn { background-color: #ffebee; color: var(--danger); padding: 8px; border-radius: 8px; border: none; font-size: 12px; font-weight: bold; cursor: pointer; width: 100%; }
+        .edit-input { border: 1px solid transparent; background: #f2f2f2; border-radius: 6px; padding: 6px 4px; font-size: 13px; text-align: center; width: 100%; box-sizing: border-box; font-family: inherit; }
+
+        /* 📊 [수정] 통계 버튼 크기 균등 분배 */
+        .chart-tabs { display: flex; gap: 5px; margin-bottom: 15px; background: #f0f0f0; padding: 5px; border-radius: 10px; }
+        .chart-tabs button { 
+            flex: 1; /* 모든 버튼이 동일한 비율을 갖도록 설정 */
+            width: 0; /* flex-grow가 우선하도록 width 강제 제한 */
+            padding: 10px 0; /* 좌우 패딩을 없애고 높이만 조절 */
+            font-size: 13px; 
+            background: transparent; 
+            border: none; 
+            border-radius: 8px; 
+            color: #777; 
+            cursor: pointer; 
+            white-space: nowrap; /* 글자 줄바꿈 방지 */
+        }
+        .chart-tabs button.active { background: white; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.05); color: #222; }
+    </style>
+</head>
+<body>
+
+    <input type="radio" id="globalBaby1" name="globalBaby" value="안해성" checked>
+    <input type="radio" id="globalBaby2" name="globalBaby" value="안해민">
+    
+    <div class="header-tabs">
+        <label for="globalBaby1">👦 안해성 기록장</label>
+        <label for="globalBaby2">🧒 안해민 기록장</label>
+    </div>
+
+    <div class="container">
+        <div class="card">
+            <h3>📝 새 기록 추가하기</h3>
+            <form id="recordForm">
+                <div class="form-row">
+                    <select id="recordType">
+                        <option value="수유(ml)">🍼 수유 (ml)</option>
+                        <option value="배변">💩 배변 (상태)</option>
+                        <option value="수면(분)">💤 수면 (분 단위)</option>
+                        <option value="몸무게(kg)">⚖️ 몸무게 (kg)</option>
+                        <option value="체온(°C)">🌡️ 체온 (°C)</option> 
+                        <option value="메모">📝 일일 이슈</option> 
+                    </select>
+                    <input type="number" id="recordValue" step="0.001" placeholder="수치 입력" required>
+                    <select id="poopValue" style="display: none;"><option value="소변">소변</option><option value="대변">대변</option><option value="소변+대변">소변+대변</option></select>
+                    <input type="text" id="textValue" placeholder="이슈를 적어주세요" style="display: none;">
+                </div>
+                <div class="form-row"><input type="date" id="recordDate" required><input type="time" id="recordTime" required></div>
+                <button type="submit" class="primary-btn">기록 저장</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h3><span>📅 일별 기록 조회</span><input type="date" id="dateFilter" style="width: auto; min-width: 130px;"></h3>
+            <div id="recordTables"></div>
+        </div>
+
+        <div class="card">
+            <h3>📊 성장 및 수유 통계</h3>
+            <div class="form-row">
+                <select id="chartTypeSelect" style="margin-bottom: 0;">
+                    <option value="몸무게(kg)" selected>⚖️ 몸무게 변화</option>
+                    <option value="수유(ml)_평균">🍼 수유량 변화 (평균치)</option>
+                    <option value="수유(ml)_합계">🍼 수유량 변화 (일일 총합)</option>
+                </select>
+            </div>
+            <div class="chart-tabs">
+                <button class="chart-tab-btn active" data-period="daily">7일</button>
+                <button class="chart-tab-btn" data-period="weekly">4주</button>
+                <button class="chart-tab-btn" data-period="monthly">3개월</button>
+            </div>
+            <canvas id="mainChart"></canvas>
+        </div>
+    </div>
+
+    <div id="customModal">
+        <div class="modal-content">
+            <p>이 기록을 정말 삭제할까요?</p>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal()">취소</button>
+                <button class="btn-confirm" id="confirmDeleteBtn">삭제하기</button>
+            </div>
+        </div>
+    </div>
+
+    <button id="voiceBtn" class="voice-btn">🎤</button>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAkwSxxa-utpaDDVWthnBbVCcnmmKlG_eo",
+            authDomain: "test-4d7cc.firebaseapp.com",
+            projectId: "test-4d7cc",
+            storageBucket: "test-4d7cc.firebasestorage.app",
+            messagingSenderId: "281762117923",
+            appId: "1:281762117923:web:05c5bcfdb131d31becb496",
+            measurementId: "G-D6HZ61CYM9"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const recordsCol = collection(db, 'baby_records');
+
+        let allRecords = []; 
+        let currentBaby = '안해성'; 
+        let currentPeriod = 'daily'; 
+        let currentChartMetric = '몸무게(kg)';
+        let myChart = null;
+        let deleteTargetId = null;
+        let newlyAddedId = null;
+        let isVoiceProcessing = false; // ⚠️ 중복 기록 방지용 플래그
+
+        const getTodayString = () => {
+            const tzoffset = (new Date()).getTimezoneOffset() * 60000; 
+            return (new Date(Date.now() - tzoffset)).toISOString().split('T')[0];
+        };
+        const resetFormTime = () => {
+            const now = new Date();
+            document.getElementById('recordDate').value = getTodayString();
+            document.getElementById('recordTime').value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        };
+        resetFormTime();
+        const dateFilterInput = document.getElementById('dateFilter');
+        dateFilterInput.value = getTodayString();
+
+        function switchBaby(babyName) {
+            currentBaby = babyName;
+            document.getElementById(babyName === '안해성' ? 'globalBaby1' : 'globalBaby2').checked = true;
+            document.documentElement.style.setProperty('--primary', babyName === '안해성' ? '#2196F3' : '#FF9800');
+            renderList();
+            renderChart();
+        }
+
+        dateFilterInput.addEventListener('change', () => renderList());
+        window.openDeleteModal = (id) => { deleteTargetId = id; document.getElementById('customModal').style.display = 'flex'; };
+        window.closeModal = () => { document.getElementById('customModal').style.display = 'none'; };
+        document.getElementById('confirmDeleteBtn').addEventListener('click', async () => {
+            if (deleteTargetId) { await deleteDoc(doc(db, 'baby_records', deleteTargetId)); closeModal(); }
+        });
+
+        onSnapshot(query(recordsCol, orderBy("timestamp", "desc")), (snap) => {
+            allRecords = []; 
+            snap.forEach(d => { if(d.data().timestamp) allRecords.push({ id: d.id, ...d.data(), dateObj: d.data().timestamp.toDate ? d.data().timestamp.toDate() : new Date(d.data().timestamp) }); });
+            renderList(); renderChart();
+        });
+
+        function renderList() {
+            const container = document.getElementById('recordTables'); container.innerHTML = '';
+            const targetDate = document.getElementById('dateFilter').value;
+            const filtered = allRecords.filter(r => {
+                const tzoffset = r.dateObj.getTimezoneOffset() * 60000;
+                return r.babyName === currentBaby && (new Date(r.dateObj - tzoffset)).toISOString().split('T')[0] === targetDate;
+            });
+            if(!filtered.length) { container.innerHTML = '<p style="text-align:center;color:#999;padding:20px;">기록이 없습니다.</p>'; return; }
+
+            let feed=0, sleep=0, weight=null, temp=null;
+            const groups = { '수유(ml)': [], '배변': [], '수면(분)': [], '몸무게(kg)': [], '체온(°C)': [], '메모': [] };
+            filtered.forEach(r => { if(groups[r.type]) groups[r.type].push(r); if(r.type==='수유(ml)') feed += r.value; if(r.type==='수면(분)') sleep += r.value; });
+
+            if(groups['몸무게(kg)'].length > 0) weight = [...groups['몸무게(kg)']].sort((a,b) => b.dateObj - a.dateObj)[0].value;
+            if(groups['체온(°C)'].length > 0) temp = Math.max(...groups['체온(°C)'].map(r => r.value));
+
+            container.innerHTML = `<div class="summary-box"><div class="summary-grid"><div class="summary-item">🍼 수유<strong>${feed}ml</strong></div><div class="summary-item">💤 수면<strong>${Math.floor(sleep/60)}h ${sleep%60}m</strong></div><div class="summary-item">⚖️ 최근 몸무게<strong>${weight!==null ? weight : '-'}kg</strong></div><div class="summary-item ${temp>=37.5?'fever-warning':''}">🌡️ 체온<strong>${temp||'-'}°C</strong></div></div></div>`;
+
+            Object.entries(groups).forEach(([type, items]) => {
+                if(!items.length) return; items.sort((a,b)=>a.dateObj-b.dateObj);
+                let html = `<div class="type-title">${type}</div><table>`;
+                items.forEach(r => {
+                    const time = `${String(r.dateObj.getHours()).padStart(2,'0')}:${String(r.dateObj.getMinutes()).padStart(2,'0')}`;
+                    const blinkClass = (r.id === newlyAddedId) ? 'highlight-blink' : '';
+                    let inputHTML = (type==='배변') ? `<select class="edit-input val-update" data-id="${r.id}"><option value="소변" ${r.value==='소변'?'selected':''}>소변</option><option value="대변" ${r.value==='대변'?'selected':''}>대변</option><option value="소변+대변" ${r.value==='소변+대변'?'selected':''}>소변+대변</option></select>` 
+                                   : (type==='메모') ? `<input type="text" class="edit-input val-update" data-id="${r.id}" value="${r.value}" style="text-align:left; padding-left:8px;">`
+                                   : `<input type="number" step="0.001" class="edit-input val-update" data-id="${r.id}" value="${r.value}">`;
+                    html += `<tr class="${blinkClass}"><td width="30%"><input type="time" class="edit-input time-update" data-id="${r.id}" value="${time}"></td><td width="50%">${inputHTML}</td><td width="20%"><button class="delete-btn" onclick="openDeleteModal('${r.id}')">삭제</button></td></tr>`;
+                });
+                container.innerHTML += html + '</table>';
+            });
+
+            document.querySelectorAll('.time-update').forEach(i => i.addEventListener('change', async (e) => {
+                const r = allRecords.find(x => x.id === e.target.dataset.id);
+                const [h, m] = e.target.value.split(':');
+                const d = new Date(r.dateObj); d.setHours(h, m);
+                await updateDoc(doc(db, 'baby_records', r.id), { timestamp: d });
+            }));
+            document.querySelectorAll('.val-update').forEach(i => i.addEventListener('change', async (e) => {
+                const r = allRecords.find(x => x.id === e.target.dataset.id);
+                let val = (r.type==='배변'||r.type==='메모') ? e.target.value : Number(e.target.value);
+                await updateDoc(doc(db, 'baby_records', r.id), { value: val });
+            }));
+        }
+
+        function renderChart() {
+            const ctx = document.getElementById('mainChart').getContext('2d'); if(myChart) myChart.destroy();
+            const dbType = currentChartMetric.startsWith('수유') ? '수유(ml)' : '몸무게(kg)';
+            const chartData = allRecords.filter(r => r.babyName === currentBaby && r.type === dbType);
+            let labels = [], points = [];
+            let daysLimit = currentPeriod === 'daily' ? 7 : (currentPeriod === 'weekly' ? 28 : 90);
+            let runningValue = 0;
+            for(let i = daysLimit - 1; i >= 0; i--) {
+                const d = new Date(); d.setDate(d.getDate() - i);
+                const dateStr = (d.getMonth() + 1) + '/' + d.getDate();
+                let displayLabel = currentPeriod === 'daily' ? dateStr : ((((daysLimit-1)-i+1)%(currentPeriod==='weekly'?7:30)===0) ? (((daysLimit-1)-i+1)/(currentPeriod==='weekly'?7:30))+(currentPeriod==='weekly'?'주':'개월') : '');
+                labels.push(displayLabel);
+                const dayRecs = chartData.filter(r => (r.dateObj.getMonth()+1)+'/'+r.dateObj.getDate() === dateStr);
+                if (dayRecs.length > 0) {
+                    if(dbType === '몸무게(kg)') runningValue = dayRecs.sort((a,b) => b.dateObj - a.dateObj)[0].value;
+                    else {
+                        const total = dayRecs.reduce((sum, r) => sum + r.value, 0);
+                        runningValue = currentChartMetric === '수유(ml)_평균' ? Math.round(total / dayRecs.length) : total;
+                    }
+                }
+                points.push(runningValue);
+            }
+            myChart = new Chart(ctx, { type: 'line', data: { labels, datasets: [{ label: currentChartMetric, data: points, borderColor: currentBaby==='안해성'?'#2196F3':'#FF9800', backgroundColor: (currentBaby==='안해성'?'#2196F3':'#FF9800')+'33', fill: true, tension: 0.4, pointRadius: currentPeriod === 'daily' ? 3 : 1 }] }, options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true }, x: { grid: { display: false }, ticks: { autoSkip: false, maxRotation: 0 } } }, spanGaps: true } });
+        }
+
+        document.getElementById('recordType').addEventListener('change', (e) => {
+            const num = document.getElementById('recordValue'), poop = document.getElementById('poopValue'), txt = document.getElementById('textValue');
+            num.style.display = 'none'; num.required = false; poop.style.display = 'none'; txt.style.display = 'none'; txt.required = false;
+            if (e.target.value === '배변') poop.style.display = 'block'; else if (e.target.value === '메모') { txt.style.display = 'block'; txt.required = true; } else { num.style.display = 'block'; num.required = true; }
+        });
+        document.querySelectorAll('input[name="globalBaby"]').forEach(r => r.addEventListener('change', (e) => switchBaby(e.target.value)));
+        document.getElementById('chartTypeSelect').addEventListener('change', (e) => { currentChartMetric = e.target.value; renderChart(); });
+        document.querySelectorAll('.chart-tab-btn').forEach(btn => btn.addEventListener('click', (e) => { document.querySelectorAll('.chart-tab-btn').forEach(b => b.classList.remove('active')); e.target.classList.add('active'); currentPeriod = e.target.dataset.period; renderChart(); }));
+
+        document.getElementById('recordForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const type = document.getElementById('recordType').value;
+            let val = (type==='배변') ? document.getElementById('poopValue').value : (type==='메모' ? document.getElementById('textValue').value : Number(document.getElementById('recordValue').value));
+            const sDate = document.getElementById('recordDate').value, sTime = document.getElementById('recordTime').value;
+            const docRef = await addDoc(recordsCol, { babyName: currentBaby, type, value: val, timestamp: new Date(`${sDate}T${sTime}:00`) });
+            newlyAddedId = docRef.id; document.getElementById('recordValue').value = ''; document.getElementById('textValue').value = ''; resetFormTime(); dateFilterInput.value = sDate; renderList();
+        });
+
+        // 🎙️ 음성 인식 (중복 방지 로직 적용)
+        const voiceBtn = document.getElementById('voiceBtn');
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'ko-KR';
+            recognition.onresult = (e) => {
+                // ⚠️ 음성 엔진이 최종 결과(isFinal)라고 할 때만 처리하도록 필터링
+                if (e.results[e.results.length - 1].isFinal) {
+                    processVoiceCommand(e.results[e.results.length - 1][0].transcript);
+                }
+            };
+            voiceBtn.addEventListener('click', () => { recognition.start(); voiceBtn.classList.add('listening'); });
+            recognition.onend = () => voiceBtn.classList.remove('listening');
+        }
+
+        async function processVoiceCommand(text) {
+            // ⚠️ 중복 저장 방지: 처리 중이면 리턴
+            if (isVoiceProcessing) return;
+            isVoiceProcessing = true;
+
+            try {
+                let processed = text.replace(/반/g, ' 30분');
+                let babyName = text.match(/해민|혜민|달콩|둘째/) ? '안해민' : (text.match(/해성|혜성|알콩|첫째/) ? '안해성' : currentBaby);
+                if (currentBaby !== babyName) switchBaby(babyName);
+
+                let type = '메모', value = text;
+                const isStool = text.match(/응가|똥|대변/);
+                const isUrine = text.match(/쉬|소변|오줌/);
+
+                if (isStool && isUrine) { type = '배변'; value = '소변+대변'; }
+                else if (isStool) { type = '배변'; value = '대변'; }
+                else if (isUrine) { type = '배변'; value = '소변'; }
+                else if (text.match(/수면|낮잠|잤|분|시간/)) {
+                    type = '수면(분)';
+                    let hMatch = processed.match(/(\d+)시간/), mMatch = processed.match(/(\d+)분/);
+                    value = (hMatch ? parseInt(hMatch[1])*60 : 0) + (mMatch ? parseInt(mMatch[1]) : 0);
+                }
+                else if (text.match(/몸무게|체중|키로|kg|그람|g/)) {
+                    type = '몸무게(kg)';
+                    let gMatch = processed.match(/(\d+)\s*(그람|그램|g)/), kMatch = processed.match(/(\d+\.?\d*)\s*(키로|킬로|kg)/);
+                    value = gMatch ? parseFloat(gMatch[1])/1000 : (kMatch ? parseFloat(kMatch[1]) : 0);
+                }
+                else if (text.match(/체온|열|도/)) { type = '체온(°C)'; let m = processed.match(/(\d+\.?\d*)/); value = m ? parseFloat(m[1]) : 0; }
+                else if (text.match(/우유|수유|밀리|ml/)) { type = '수유(ml)'; let m = processed.match(/(\d+)/g); value = m ? parseInt(m[m.length-1]) : 0; }
+
+                if (value === 0 && text.match(/수면|몸무게|체온|수유/) && type !== '배변') { alert("정확한 숫자를 듣지 못했어요!"); return; }
+                
+                const docRef = await addDoc(recordsCol, { babyName: babyName, type, value, timestamp: new Date() });
+                newlyAddedId = docRef.id;
+                dateFilterInput.value = getTodayString();
+                renderList(); renderChart();
+            } finally {
+                // ⚠️ 처리가 끝나면 플래그 해제 (0.5초 뒤에 해제하여 안정성 확보)
+                setTimeout(() => { isVoiceProcessing = false; }, 500);
+            }
+        }
+    </script>
+</body>
+</html>
