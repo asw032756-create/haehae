@@ -23,20 +23,9 @@
         select, input, button { flex: 1; min-width: 0; width: 100%; padding: 12px 8px; border: 1px solid #e0e0e0; border-radius: 10px; font-size: 14px; box-sizing: border-box; background-color: #fafafa; }
         button.primary-btn { background-color: var(--primary); color: white; font-weight: bold; cursor: pointer; border: none; font-size: 16px; padding: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         
-        /* 🎙️ [수정] 음성 버튼 스타일 및 레이더 애니메이션 강화 */
         .voice-btn { position: fixed; bottom: 20px; right: 20px; width: 60px; height: 60px; background-color: var(--danger); border-radius: 50%; color: white; display: flex; align-items: center; justify-content: center; font-size: 24px; box-shadow: 0 4px 15px rgba(255,82,82,0.4); cursor: pointer; z-index: 999; border: none; transition: 0.3s ease; }
-        
-        .voice-btn.listening { 
-            background-color: #111; /* 확 눈에 띄게 어두운 색으로 변경 */
-            transform: scale(1.15); 
-            animation: voice-ripple 1.2s infinite; 
-        }
-        
-        @keyframes voice-ripple { 
-            0% { box-shadow: 0 0 0 0 rgba(255, 82, 82, 0.8); } 
-            70% { box-shadow: 0 0 0 20px rgba(255, 82, 82, 0); } 
-            100% { box-shadow: 0 0 0 0 rgba(255, 82, 82, 0); } 
-        }
+        .voice-btn.listening { background-color: #111; transform: scale(1.15); animation: voice-ripple 1.2s infinite; }
+        @keyframes voice-ripple { 0% { box-shadow: 0 0 0 0 rgba(255, 82, 82, 0.8); } 70% { box-shadow: 0 0 0 20px rgba(255, 82, 82, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 82, 82, 0); } }
 
         @keyframes blink-twice { 0% { background: transparent; } 25% { background: #fff59d; } 50% { background: transparent; } 75% { background: #fff59d; } 100% { background: transparent; } }
         .highlight-blink { animation: blink-twice 1.5s ease-in-out; }
@@ -258,25 +247,64 @@
             }
         };
 
+        // 📊 [핵심 수정] 4주, 3개월 선택 시 데이터를 기간 단위로 묶어서 하나만 표시
         function renderChart() {
             const ctx = document.getElementById('mainChart').getContext('2d'); if(myChart) myChart.destroy();
             const dbType = currentChartMetric.startsWith('수유') ? '수유(ml)' : '몸무게(kg)';
             const chartData = allRecords.filter(r => r.babyName === currentBaby && r.type === dbType);
-            let labels = [], points = [];
-            let daysLimit = currentPeriod === 'daily' ? 7 : (currentPeriod === 'weekly' ? 28 : 90);
-            let runningValue = 0;
             
-            for(let i = daysLimit - 1; i >= 0; i--) {
-                const d = new Date(); d.setDate(d.getDate() - i);
-                const dateStr = (d.getMonth() + 1) + '/' + d.getDate();
-                let displayLabel = currentPeriod === 'daily' ? dateStr : ((((daysLimit-1)-i+1)%(currentPeriod==='weekly'?7:30)===0) ? (((daysLimit-1)-i+1)/(currentPeriod==='weekly'?7:30))+(currentPeriod==='weekly'?'주':'개월') : '');
+            let labels = [], points = [];
+            
+            // 기간 설정: 7일(7개), 4주(4개), 3개월(3개)
+            let numPoints = currentPeriod === 'daily' ? 7 : (currentPeriod === 'weekly' ? 4 : 3);
+            let daysPerPoint = currentPeriod === 'daily' ? 1 : (currentPeriod === 'weekly' ? 7 : 30);
+            
+            let runningValue = 0;
+            const now = new Date();
+            const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            
+            // 과거부터 현재로 (왼쪽에서 오른쪽으로 그래프를 그리기 위해 역순 루프)
+            for(let i = numPoints - 1; i >= 0; i--) {
+                let startDayAgo = i * daysPerPoint;
+                let endDayAgo = (i + 1) * daysPerPoint - 1;
+
+                let endDate = new Date(startOfToday);
+                endDate.setDate(endDate.getDate() - startDayAgo);
+                endDate.setHours(23, 59, 59, 999);
+
+                let startDate = new Date(startOfToday);
+                startDate.setDate(startDate.getDate() - endDayAgo);
+                startDate.setHours(0, 0, 0, 0);
+
+                // 해당 구간(1일, 7일, 30일)의 데이터를 한 번에 모음
+                const periodRecs = chartData.filter(r => r.dateObj >= startDate && r.dateObj <= endDate);
+
+                // X축 라벨 세팅
+                let displayLabel = '';
+                if (currentPeriod === 'daily') {
+                    const d = new Date(startOfToday); d.setDate(d.getDate() - startDayAgo);
+                    displayLabel = (d.getMonth() + 1) + '/' + d.getDate();
+                } else if (currentPeriod === 'weekly') {
+                    displayLabel = i === 0 ? '이번 주' : i + '주 전';
+                } else {
+                    displayLabel = i === 0 ? '이번 달' : i + '달 전';
+                }
                 labels.push(displayLabel);
-                const dayRecs = chartData.filter(r => (r.dateObj.getMonth()+1)+'/'+r.dateObj.getDate() === dateStr);
-                if (dayRecs.length > 0) {
-                    if(dbType === '몸무게(kg)') runningValue = dayRecs.sort((a,b) => b.dateObj - a.dateObj)[0].value;
-                    else {
-                        const total = dayRecs.reduce((sum, r) => sum + r.value, 0);
-                        runningValue = currentChartMetric === '수유(ml)_평균' ? Math.round(total / dayRecs.length) : total;
+
+                // 값 계산 (최신값, 평균값 등)
+                if (periodRecs.length > 0) {
+                    if(dbType === '몸무게(kg)') {
+                        // 몸무게는 해당 기간 중 가장 최근에 잰 값
+                        runningValue = periodRecs.sort((a,b) => b.dateObj - a.dateObj)[0].value;
+                    } else {
+                        const total = periodRecs.reduce((sum, r) => sum + r.value, 0);
+                        if (currentChartMetric === '수유(ml)_평균') {
+                            runningValue = Math.round(total / periodRecs.length);
+                        } else {
+                            // 일일 총합 차트인 경우 -> 해당 기간 동안의 '하루 평균 총합'
+                            const uniqueDays = new Set(periodRecs.map(r => r.dateObj.toDateString())).size;
+                            runningValue = uniqueDays > 0 ? Math.round(total / uniqueDays) : 0;
+                        }
                     }
                 }
                 points.push(runningValue);
@@ -295,12 +323,12 @@
                         backgroundColor: (currentBaby==='안해성'?'#2196F3':'#FF9800')+'33', 
                         fill: true, 
                         tension: 0.4, 
-                        pointRadius: currentPeriod === 'daily' ? 3 : 1 
+                        pointRadius: 4 // 점 크기를 통일감 있게 키움
                     }] 
                 }, 
                 plugins: [alwaysShowValuesPlugin], 
                 options: { 
-                    layout: { padding: { top: 25 } },
+                    layout: { padding: { top: 25, left: 15, right: 15 } }, // 좌우 여백을 늘려 가장자리 글씨 잘림 방지
                     responsive: true, 
                     plugins: { legend: { display: false } }, 
                     scales: { 
@@ -330,7 +358,6 @@
             newlyAddedId = docRef.id; document.getElementById('recordValue').value = ''; document.getElementById('textValue').value = ''; resetFormTime(); dateFilterInput.value = sDate; renderList();
         });
 
-        // 🎙️ [수정] 음성 인식 아이콘 제어
         const voiceBtn = document.getElementById('voiceBtn');
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (SpeechRecognition) {
@@ -341,19 +368,8 @@
                     processVoiceCommand(e.results[e.results.length - 1][0].transcript);
                 }
             };
-            
-            // 누르는 순간 아이콘 귀(👂)로 변경
-            voiceBtn.addEventListener('click', () => { 
-                recognition.start(); 
-                voiceBtn.classList.add('listening'); 
-                voiceBtn.innerText = '👂'; 
-            });
-            
-            // 끝나면 다시 마이크(🎤)로 변경
-            recognition.onend = () => { 
-                voiceBtn.classList.remove('listening'); 
-                voiceBtn.innerText = '🎤'; 
-            };
+            voiceBtn.addEventListener('click', () => { recognition.start(); voiceBtn.classList.add('listening'); voiceBtn.innerText = '👂'; });
+            recognition.onend = () => { voiceBtn.classList.remove('listening'); voiceBtn.innerText = '🎤'; };
         }
 
         async function processVoiceCommand(text) {
