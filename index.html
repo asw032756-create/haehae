@@ -49,20 +49,8 @@
         .delete-btn { background-color: #ffebee; color: var(--danger); padding: 8px; border-radius: 8px; border: none; font-size: 12px; font-weight: bold; cursor: pointer; width: 100%; }
         .edit-input { border: 1px solid transparent; background: #f2f2f2; border-radius: 6px; padding: 6px 4px; font-size: 13px; text-align: center; width: 100%; box-sizing: border-box; font-family: inherit; }
 
-        /* 📊 [수정] 통계 버튼 크기 균등 분배 */
         .chart-tabs { display: flex; gap: 5px; margin-bottom: 15px; background: #f0f0f0; padding: 5px; border-radius: 10px; }
-        .chart-tabs button { 
-            flex: 1; /* 모든 버튼이 동일한 비율을 갖도록 설정 */
-            width: 0; /* flex-grow가 우선하도록 width 강제 제한 */
-            padding: 10px 0; /* 좌우 패딩을 없애고 높이만 조절 */
-            font-size: 13px; 
-            background: transparent; 
-            border: none; 
-            border-radius: 8px; 
-            color: #777; 
-            cursor: pointer; 
-            white-space: nowrap; /* 글자 줄바꿈 방지 */
-        }
+        .chart-tabs button { flex: 1; width: 0; padding: 10px 0; font-size: 13px; background: transparent; border: none; border-radius: 8px; color: #777; cursor: pointer; white-space: nowrap; }
         .chart-tabs button.active { background: white; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.05); color: #222; }
     </style>
 </head>
@@ -158,7 +146,7 @@
         let myChart = null;
         let deleteTargetId = null;
         let newlyAddedId = null;
-        let isVoiceProcessing = false; // ⚠️ 중복 기록 방지용 플래그
+        let isVoiceProcessing = false;
 
         const getTodayString = () => {
             const tzoffset = (new Date()).getTimezoneOffset() * 60000; 
@@ -210,7 +198,7 @@
             if(groups['몸무게(kg)'].length > 0) weight = [...groups['몸무게(kg)']].sort((a,b) => b.dateObj - a.dateObj)[0].value;
             if(groups['체온(°C)'].length > 0) temp = Math.max(...groups['체온(°C)'].map(r => r.value));
 
-            container.innerHTML = `<div class="summary-box"><div class="summary-grid"><div class="summary-item">🍼 수유<strong>${feed}ml</strong></div><div class="summary-item">💤 수면<strong>${Math.floor(sleep/60)}h ${sleep%60}m</strong></div><div class="summary-item">⚖️ 최근 몸무게<strong>${weight!==null ? weight : '-'}kg</strong></div><div class="summary-item ${temp>=37.5?'fever-warning':''}">🌡️ 체온<strong>${temp||'-'}°C</strong></div></div></div>`;
+            container.innerHTML = `<div class="summary-box"><div class="summary-grid"><div class="summary-item">🍼 수유<strong>${feed}ml</strong></div><div class="summary-item">💤 수면<strong>${Math.floor(sleep/60)}h ${sleep%60}m</strong></div><div class="summary-item">⚖️ 최근 몸무게<strong>${weight!==null ? weight : '-'}kg</strong></div><div class="summary-item ${temp>=37.5?'fever-warning':''}">🌡️ 최고 체온<strong>${temp||'-'}°C</strong></div></div></div>`;
 
             Object.entries(groups).forEach(([type, items]) => {
                 if(!items.length) return; items.sort((a,b)=>a.dateObj-b.dateObj);
@@ -239,6 +227,28 @@
             }));
         }
 
+        // 📊 [신규] 차트 캔버스 위에 숫자를 직접 그려주는 플러그인
+        const alwaysShowValuesPlugin = {
+            id: 'alwaysShowValues',
+            afterDatasetsDraw(chart) {
+                const { ctx } = chart;
+                chart.data.datasets.forEach((dataset, i) => {
+                    const meta = chart.getDatasetMeta(i);
+                    meta.data.forEach((datapoint, index) => {
+                        const val = dataset.data[index];
+                        if (val !== null && val !== undefined && val !== 0) { // 0이 아닌 유의미한 수치만 표시
+                            ctx.fillStyle = currentBaby === '안해성' ? '#1565C0' : '#E65100'; // 폰트 색상을 아기 테마에 맞춰 진하게
+                            ctx.font = 'bold 11px Apple SD Gothic Neo, sans-serif';
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'bottom';
+                            // 점 위로 8px 띄워서 숫자 표시
+                            ctx.fillText(val, datapoint.x, datapoint.y - 8);
+                        }
+                    });
+                });
+            }
+        };
+
         function renderChart() {
             const ctx = document.getElementById('mainChart').getContext('2d'); if(myChart) myChart.destroy();
             const dbType = currentChartMetric.startsWith('수유') ? '수유(ml)' : '몸무게(kg)';
@@ -246,6 +256,7 @@
             let labels = [], points = [];
             let daysLimit = currentPeriod === 'daily' ? 7 : (currentPeriod === 'weekly' ? 28 : 90);
             let runningValue = 0;
+            
             for(let i = daysLimit - 1; i >= 0; i--) {
                 const d = new Date(); d.setDate(d.getDate() - i);
                 const dateStr = (d.getMonth() + 1) + '/' + d.getDate();
@@ -261,7 +272,37 @@
                 }
                 points.push(runningValue);
             }
-            myChart = new Chart(ctx, { type: 'line', data: { labels, datasets: [{ label: currentChartMetric, data: points, borderColor: currentBaby==='안해성'?'#2196F3':'#FF9800', backgroundColor: (currentBaby==='안해성'?'#2196F3':'#FF9800')+'33', fill: true, tension: 0.4, pointRadius: currentPeriod === 'daily' ? 3 : 1 }] }, options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true }, x: { grid: { display: false }, ticks: { autoSkip: false, maxRotation: 0 } } }, spanGaps: true } });
+
+            const labelText = currentChartMetric === '수유(ml)_평균' ? '평균 수유량' : (currentChartMetric === '수유(ml)_합계' ? '총 수유량' : '몸무게');
+            
+            myChart = new Chart(ctx, { 
+                type: 'line', 
+                data: { 
+                    labels, 
+                    datasets: [{ 
+                        label: labelText, 
+                        data: points, 
+                        borderColor: currentBaby==='안해성'?'#2196F3':'#FF9800', 
+                        backgroundColor: (currentBaby==='안해성'?'#2196F3':'#FF9800')+'33', 
+                        fill: true, 
+                        tension: 0.4, 
+                        pointRadius: currentPeriod === 'daily' ? 3 : 1 
+                    }] 
+                }, 
+                plugins: [alwaysShowValuesPlugin], // ⚠️ 커스텀 텍스트 플러그인 추가
+                options: { 
+                    layout: {
+                        padding: { top: 25 } // ⚠️ 위쪽 글씨가 잘리지 않도록 캔버스 상단 여백 추가
+                    },
+                    responsive: true, 
+                    plugins: { legend: { display: false } }, 
+                    scales: { 
+                        y: { beginAtZero: true }, 
+                        x: { grid: { display: false }, ticks: { autoSkip: false, maxRotation: 0 } } 
+                    }, 
+                    spanGaps: true 
+                } 
+            });
         }
 
         document.getElementById('recordType').addEventListener('change', (e) => {
@@ -282,14 +323,12 @@
             newlyAddedId = docRef.id; document.getElementById('recordValue').value = ''; document.getElementById('textValue').value = ''; resetFormTime(); dateFilterInput.value = sDate; renderList();
         });
 
-        // 🎙️ 음성 인식 (중복 방지 로직 적용)
         const voiceBtn = document.getElementById('voiceBtn');
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (SpeechRecognition) {
             const recognition = new SpeechRecognition();
             recognition.lang = 'ko-KR';
             recognition.onresult = (e) => {
-                // ⚠️ 음성 엔진이 최종 결과(isFinal)라고 할 때만 처리하도록 필터링
                 if (e.results[e.results.length - 1].isFinal) {
                     processVoiceCommand(e.results[e.results.length - 1][0].transcript);
                 }
@@ -299,7 +338,6 @@
         }
 
         async function processVoiceCommand(text) {
-            // ⚠️ 중복 저장 방지: 처리 중이면 리턴
             if (isVoiceProcessing) return;
             isVoiceProcessing = true;
 
@@ -335,7 +373,6 @@
                 dateFilterInput.value = getTodayString();
                 renderList(); renderChart();
             } finally {
-                // ⚠️ 처리가 끝나면 플래그 해제 (0.5초 뒤에 해제하여 안정성 확보)
                 setTimeout(() => { isVoiceProcessing = false; }, 500);
             }
         }
